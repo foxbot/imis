@@ -16,21 +16,30 @@ import (
 // request timeout length
 const timeout = 15 * time.Second
 
-var host string
-var token string
+const (
+	defaultHost  = "0.0.0.0:3000"
+	defaultToken = "orange_juice"
+)
+
+var (
+	host  = defaultHost
+	token = defaultToken
+)
 
 func init() {
-	const (
-		defaultHost  = "localhost:3000"
-		defaultToken = "orange_juice"
-	)
-	flag.StringVar(&host, "host", defaultHost, "address in localhost:XXXX form")
+	flag.StringVar(&host, "host", defaultHost, "address in 0.0.0.0:0 form")
 	flag.StringVar(&token, "token", defaultToken, "authorization header for protected endpoints")
 }
 
 func main() {
 	flag.Parse()
 
+	handler := buildRouter()
+
+	log.Fatalln(http.ListenAndServe(host, handler))
+}
+
+func buildRouter() http.Handler {
 	r := chi.NewRouter()
 	s := Server{
 		Cache: make(map[string]*[]byte),
@@ -49,5 +58,5 @@ func main() {
 	r.With(auth).Post("/objects/{key}", s.Upload)
 	r.Get("/objects/{key}", s.Get)
 
-	log.Fatalln(http.ListenAndServe(host, r))
+	return r
 }
