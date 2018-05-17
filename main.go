@@ -46,6 +46,7 @@ func buildRouter() http.Handler {
 	}
 
 	// builtin middlewares
+	r.Use(middleware.GetHead)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
