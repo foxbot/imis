@@ -1,79 +1,52 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 var h = buildRouter()
 
+// copy the const into a var so we can make a pointer to when invoking request()
+var dt = defaultToken
+
 func TestAuthorization(t *testing.T) {
 	content := strings.NewReader("test payload")
 	// Good authorization
-	req := httptest.NewRequest("POST", "/objects/auth", content)
-	req.Header.Set("Authorization", defaultToken)
-	rr := httptest.NewRecorder()
-
-	h.ServeHTTP(rr, req)
-
-	if status := rr.Code; status != http.StatusNoContent {
-		t.Errorf("handler returned wrong status code, got %v want %v",
-			status, http.StatusNoContent)
-	}
+	rr := request("POST", "auth", content, &dt, nil)
+	assertCode(t, rr, http.StatusNoContent, "auth:good")
 
 	// Bad authorization
-	req = httptest.NewRequest("POST", "/objects/auth", content)
-	req.Header.Set("Authorization", "apple_juice")
-	rr = httptest.NewRecorder()
-
-	h.ServeHTTP(rr, req)
-
-	if status := rr.Code; status != http.StatusUnauthorized {
-		t.Errorf("handler returned wrong code, got %v want %v",
-			status, http.StatusUnauthorized)
-	}
+	token := "apple_juice"
+	rr = request("POST", "auth", content, &token, nil)
+	assertCode(t, rr, http.StatusUnauthorized, "auth:bad")
 
 	// No authorization
-	req = httptest.NewRequest("POST", "/objects/auth", content)
-	rr = httptest.NewRecorder()
-
-	h.ServeHTTP(rr, req)
-
-	if status := rr.Code; status != http.StatusUnauthorized {
-		t.Errorf("handler returned wrong code, got %v want %v",
-			status, http.StatusUnauthorized)
-	}
+	rr = request("POST", "auth", content, nil, nil)
+	assertCode(t, rr, http.StatusUnauthorized, "auth:none")
 }
 
 func TestObject(t *testing.T) {
 	p := "test payload"
 	content := strings.NewReader(p)
+	// don't make the unit tests last forever :)
+	defaultExpires = 200 * time.Millisecond
 
 	// Create
-	req := httptest.NewRequest("POST", "/objects/test", content)
-	req.Header.Set("Authorization", defaultToken)
-	rr := httptest.NewRecorder()
-
-	h.ServeHTTP(rr, req)
-
-	if status := rr.Code; status != http.StatusNoContent {
-		t.Errorf("handler returned wrong code, got %v want %v",
-			status, http.StatusNoContent)
-	}
+	rr := request("POST", "test", content, &dt, nil)
+	assertCode(t, rr, http.StatusNoContent, "obj:create")
 
 	// Get
-	req = httptest.NewRequest("GET", "/objects/test", nil)
-	rr = httptest.NewRecorder()
+	rr = request("GET", "test", nil, nil, nil)
+	assertCode(t, rr, http.StatusOK, "obj:get")
 
-	h.ServeHTTP(rr, req)
-
-	if status := rr.Code; status != http.StatusOK {
-		t.Errorf("handler returned wrong code, got %v want %v",
-			status, http.StatusOK)
-	}
 	buf, err := ioutil.ReadAll(rr.Result().Body)
 	if err != nil {
 		t.Fatal(err)
@@ -83,26 +56,67 @@ func TestObject(t *testing.T) {
 			c, p)
 	}
 
-	// Ensure GET deleted
-	req = httptest.NewRequest("GET", "/objects/test", nil)
-	rr = httptest.NewRecorder()
+	// Check for deletion
+	deleteTest := make(chan bool)
+	go func() {
+		time.Sleep(defaultExpires)
 
-	h.ServeHTTP(rr, req)
+		rr = request("GET", "test", nil, nil, nil)
+		assertCode(t, rr, http.StatusNotFound, "obj:delete")
 
-	if status := rr.Code; status != http.StatusNotFound {
-		t.Errorf("handler returned wrong code, got %v want %v",
-			status, http.StatusNotFound)
-	}
+		deleteTest <- true
+	}()
+
+	// Custom expires after
+	ea := "400" // 400ms
+	rr = request("POST", "test_expires", strings.NewReader(p), &dt, &ea)
+	assertCode(t, rr, http.StatusNoContent, "obj:create_custom_expire")
+
+	deleteCustomTest := make(chan bool)
+	go func() {
+		time.Sleep(400 * time.Millisecond)
+
+		rr = request("GET", "test_expires", nil, nil, nil)
+		assertCode(t, rr, http.StatusNotFound, "obj:delete_custom_expire")
+
+		deleteCustomTest <- true
+	}()
 
 	// Ensure POST checks for content
-	req = httptest.NewRequest("POST", "/objects/test", nil)
-	req.Header.Set("Authorization", defaultToken)
-	rr = httptest.NewRecorder()
+	rr = request("POST", "test", nil, &dt, nil)
+	assertCode(t, rr, http.StatusBadRequest, "obj:post_needs_content")
 
+	// Ensure POST with Expires-After checks range
+	testEa := func(val string, name string) {
+		rr = request("POST", "test_ea_range", content, &dt, &val)
+		assertCode(t, rr, http.StatusBadRequest, name)
+	}
+	testEa(strconv.Itoa(minExpires-1), "obj:post_min_expire")
+	testEa(strconv.Itoa(maxExpires+1), "obj:post_max_expire")
+
+	// Clean up "parallel" tests
+	<-deleteTest
+	<-deleteCustomTest
+}
+
+// save a few code-duplication-trees
+func request(action string, key string, body io.Reader, auth *string, ea *string) *httptest.ResponseRecorder {
+	url := fmt.Sprintf("/objects/%s", key)
+	req := httptest.NewRequest(action, url, body)
+	if auth != nil {
+		req.Header.Set("Authorization", *auth)
+	}
+	if ea != nil {
+		req.Header.Set("X-Delete-After", *ea)
+	}
+
+	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
-
-	if status := rr.Code; status != http.StatusBadRequest {
-		t.Errorf("handler returned wrong code, got %v want %v",
-			status, http.StatusBadRequest)
+	return rr
+}
+func assertCode(t *testing.T, rr *httptest.ResponseRecorder, want int, handler string) {
+	if status := rr.Code; status != want {
+		t.Errorf("%s returned wrong code, got %v want %v (%s)",
+			handler, status, want, rr.Body.String())
 	}
 }
