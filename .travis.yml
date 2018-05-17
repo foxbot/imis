@@ -4,4 +4,4 @@ go:
 script: 
   - go get
   - go build
-  - go test ./...
+  - go test
