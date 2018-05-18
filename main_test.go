@@ -61,7 +61,7 @@ func TestObject(t *testing.T) {
 	go func() {
 		time.Sleep(defaultExpires)
 
-		rr = request("GET", "test", nil, nil, nil)
+		rr := request("GET", "test", nil, nil, nil)
 		assertCode(t, rr, http.StatusNotFound, "obj:delete")
 
 		deleteTest <- true
@@ -76,7 +76,7 @@ func TestObject(t *testing.T) {
 	go func() {
 		time.Sleep(400 * time.Millisecond)
 
-		rr = request("GET", "test_expires", nil, nil, nil)
+		rr := request("GET", "test_expires", nil, nil, nil)
 		assertCode(t, rr, http.StatusNotFound, "obj:delete_custom_expire")
 
 		deleteCustomTest <- true
@@ -88,7 +88,7 @@ func TestObject(t *testing.T) {
 
 	// Ensure POST with Expires-After checks range
 	testEa := func(val string, name string) {
-		rr = request("POST", "test_ea_range", content, &dt, &val)
+		rr := request("POST", "test_ea_range", content, &dt, &val)
 		assertCode(t, rr, http.StatusBadRequest, name)
 	}
 	testEa(strconv.Itoa(minExpires-1), "obj:post_min_expire")
