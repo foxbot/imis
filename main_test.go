@@ -74,7 +74,7 @@ func TestObject(t *testing.T) {
 
 	deleteCustomTest := make(chan bool)
 	go func() {
-		time.Sleep(400 * time.Millisecond)
+		time.Sleep(425 * time.Millisecond)
 
 		rr := request("GET", "test_expires", nil, nil, nil)
 		assertCode(t, rr, http.StatusNotFound, "obj:delete_custom_expire")
