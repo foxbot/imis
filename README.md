@@ -1,5 +1,6 @@
 # imis 
-[![Build Status](https://travis-ci.org/foxbot/imis.svg?branch=master)](https://travis-ci.org/foxbot/imis)
+[![Build Status](https://travis-ci.org/foxbot/imis.svg?branch=master)](https://travis-ci.org/foxbot/imis) 
+[![codecov](https://codecov.io/gh/foxbot/imis/branch/master/graph/badge.svg)](https://codecov.io/gh/foxbot/imis)
 
 in memory image server
 
