@@ -1,5 +1,3 @@
-FROM scratch
+FROM ulexus/go-minimal
 
-COPY imis /imis
-
-ENTRYPOINT [ "./imis" ]
+COPY imis /app

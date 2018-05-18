@@ -3,14 +3,15 @@ name = imis
 all: clean build
 
 clean:
-	- go clean
-	- go get
+        - docker stop $(name) && docker rm $(name)
+        - go clean
+#       - go get
 
 build:
-	- go build
-	- docker build . --tag $(name)
+        - CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o $(name) .
+        - docker build . --tag $(name)
 
 run:
-	docker run --name $(name) -p 3000:3000/tcp --restart unless-stopped -dti $(name)
+        docker run --name $(name) -p 80:3000/tcp --restart unless-stopped -dti $(name)
 
 .PHONY: clean build
