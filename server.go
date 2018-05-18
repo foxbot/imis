@@ -11,6 +11,9 @@ import (
 	"github.com/go-chi/chi"
 )
 
+// Blob is a byte slice
+type Blob []byte
+
 const (
 	minExpires = 1
 	maxExpires = 60000
@@ -23,7 +26,7 @@ var (
 
 // Server contains the server's state
 type Server struct {
-	Cache map[string]*[]byte
+	Cache map[string]Blob
 	lock  sync.RWMutex
 }
 
@@ -39,7 +42,7 @@ func (server *Server) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	server.lock.Lock()
-	server.Cache[id] = &data
+	server.Cache[id] = Blob(data)
 	server.lock.Unlock()
 	w.WriteHeader(http.StatusNoContent)
 
@@ -70,14 +73,14 @@ func (server *Server) Upload(w http.ResponseWriter, r *http.Request) {
 func (server *Server) Get(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "key")
 	server.lock.RLock()
-	data := server.Cache[id]
+	data, ok := server.Cache[id]
 	server.lock.RUnlock()
-	if data == nil {
+	if !ok {
 		http.Error(w, "object not found", http.StatusNotFound)
 		return
 	}
 
-	_, err := w.Write(*data)
+	_, err := w.Write(data)
 	if err != nil {
 		panic(err)
 	}

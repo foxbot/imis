@@ -42,7 +42,7 @@ func main() {
 func buildRouter() http.Handler {
 	r := chi.NewRouter()
 	s := Server{
-		Cache: make(map[string]*[]byte),
+		Cache: make(map[string]Blob),
 	}
 
 	// builtin middlewares
