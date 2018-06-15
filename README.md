@@ -6,10 +6,11 @@ in memory image server
 
 ### what is this?
 
-its redis but it only does 2 things
+its redis but it only does 3 things
 
 - create
 - get
+- list
 
 the create deletes itself. you can change how long it lasts if you
 like.
