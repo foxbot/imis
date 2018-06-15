@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -20,16 +21,16 @@ var dt = defaultToken
 func TestAuthorization(t *testing.T) {
 	content := strings.NewReader("test payload")
 	// Good authorization
-	rr := request("POST", "auth", content, &dt, nil)
+	rr := request("POST", "/auth", content, &dt, nil)
 	assertCode(t, rr, http.StatusNoContent, "auth:good")
 
 	// Bad authorization
 	token := "apple_juice"
-	rr = request("POST", "auth", content, &token, nil)
+	rr = request("POST", "/auth", content, &token, nil)
 	assertCode(t, rr, http.StatusUnauthorized, "auth:bad")
 
 	// No authorization
-	rr = request("POST", "auth", content, nil, nil)
+	rr = request("POST", "/auth", content, nil, nil)
 	assertCode(t, rr, http.StatusUnauthorized, "auth:none")
 }
 
@@ -40,11 +41,11 @@ func TestObject(t *testing.T) {
 	defaultExpires = 200 * time.Millisecond
 
 	// Create
-	rr := request("POST", "test", content, &dt, nil)
+	rr := request("POST", "/test", content, &dt, nil)
 	assertCode(t, rr, http.StatusNoContent, "obj:create")
 
 	// Get
-	rr = request("GET", "test", nil, nil, nil)
+	rr = request("GET", "/test", nil, nil, nil)
 	assertCode(t, rr, http.StatusOK, "obj:get")
 
 	buf, err := ioutil.ReadAll(rr.Result().Body)
@@ -61,7 +62,7 @@ func TestObject(t *testing.T) {
 	go func() {
 		time.Sleep(defaultExpires)
 
-		rr := request("GET", "test", nil, nil, nil)
+		rr := request("GET", "/test", nil, nil, nil)
 		assertCode(t, rr, http.StatusNotFound, "obj:delete")
 
 		deleteTest <- true
@@ -69,39 +70,70 @@ func TestObject(t *testing.T) {
 
 	// Custom expires after
 	ea := "400" // 400ms
-	rr = request("POST", "test_expires", strings.NewReader(p), &dt, &ea)
+	content.Reset(p)
+	rr = request("POST", "/test_expires", content, &dt, &ea)
 	assertCode(t, rr, http.StatusNoContent, "obj:create_custom_expire")
 
 	deleteCustomTest := make(chan bool)
 	go func() {
 		time.Sleep(425 * time.Millisecond)
 
-		rr := request("GET", "test_expires", nil, nil, nil)
+		rr := request("GET", "/test_expires", nil, nil, nil)
 		assertCode(t, rr, http.StatusNotFound, "obj:delete_custom_expire")
 
 		deleteCustomTest <- true
 	}()
 
 	// Ensure POST checks for content
-	rr = request("POST", "test", nil, &dt, nil)
+	rr = request("POST", "/test", nil, &dt, nil)
 	assertCode(t, rr, http.StatusBadRequest, "obj:post_needs_content")
 
 	// Ensure POST with Expires-After checks range
 	testEa := func(val string, name string) {
-		rr := request("POST", "test_ea_range", content, &dt, &val)
+		rr := request("POST", "/test_ea_range", content, &dt, &val)
 		assertCode(t, rr, http.StatusBadRequest, name)
 	}
 	testEa(strconv.Itoa(minExpires-1), "obj:post_min_expire")
 	testEa(strconv.Itoa(maxExpires+1), "obj:post_max_expire")
 
+	// Ensure list endpoint returns a JSON
+	listTest := make(chan bool)
+	go func() {
+		expected := "test_list"
+		content.Reset(p)
+		rr := request("POST", "/" + expected, content, &dt, nil)
+		assertCode(t, rr, http.StatusNoContent, "obj:list_create")
+
+		rr = request("GET", "", nil, &token, nil)
+		assertCode(t, rr, http.StatusOK, "obj:list")
+
+		result := map[string]string{}
+		if err = json.NewDecoder(rr.Result().Body).Decode(&result); err != nil {
+			t.Fatal(err)
+		}
+
+		found := false
+		for _, val := range result {
+			if val == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Expected %s in JSON response, does not exist.", expected)
+		}
+		listTest <- true
+	}()
+
 	// Clean up "parallel" tests
 	<-deleteTest
 	<-deleteCustomTest
+	<-listTest
 }
 
 // save a few code-duplication-trees
 func request(action string, key string, body io.Reader, auth *string, ea *string) *httptest.ResponseRecorder {
-	url := fmt.Sprintf("/objects/%s", key)
+	url := fmt.Sprintf("/objects%s", key)
 	req := httptest.NewRequest(action, url, body)
 	if auth != nil {
 		req.Header.Set("Authorization", *auth)

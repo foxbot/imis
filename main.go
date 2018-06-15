@@ -57,6 +57,7 @@ func buildRouter() http.Handler {
 	auth := AuthorizationMiddleware(token)
 
 	r.With(auth).Post("/objects/{key}", s.Upload)
+	r.With(auth).Get("/objects", s.List)
 	r.Get("/objects/{key}", s.Get)
 
 	return r
